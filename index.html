@@ -1,1 +1,1503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VidyutSetu: Memory Room</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Three.js for simple 3D visualization -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        /* Custom Styles for Calming Aesthetic and Room Layout */
+        :root {
+            --sage-green: #C1D5C9; /* Calming sage green */
+            --beige: #F5F5DC; /* Soft beige */
+            --wood-dark: #8B4513; /* Rich brown wood color for shelves */
+            --shadow-light: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+            --shadow-medium: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--beige);
+            color: #374151; /* Darker text for readability */
+            min-height: 100vh;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+        }
+
+        /* The 2D Room Container */
+        #room-container {
+            width: 90%;
+            max-width: 1000px;
+            height: 500px;
+            background-color: var(--sage-green);
+            border: 4px solid #7c9b88; /* Darker sage border */
+            box-shadow: var(--shadow-medium);
+            position: relative;
+            margin-bottom: 20px;
+            overflow: hidden;
+            cursor: pointer; /* Indicates where to add compartments */
+            display: none; /* Hidden by default */
+        }
+
+        /* 3D Canvas Container */
+        #three-d-view {
+            width: 90%;
+            max-width: 1000px;
+            height: 500px;
+            margin-bottom: 20px;
+            background-color: #374151; /* Dark background for 3D contrast */
+            box-shadow: var(--shadow-medium);
+            display: none; /* Hidden by default */
+        }
+        #three-d-view canvas {
+            display: block;
+        }
+        
+        /* Welcome Screen Container */
+        #welcome-screen {
+            display: none; /* Hidden by default, shown by JS */
+        }
+
+        /* Styles for the draggable/resizable compartment */
+        .compartment {
+            position: absolute;
+            background-color: rgba(255, 255, 255, 0.6); /* Semi-transparent white shelf/board */
+            border: 2px dashed #7c9b88;
+            box-shadow: var(--shadow-light);
+            cursor: grab;
+            display: flex;
+            flex-wrap: wrap;
+            align-content: flex-start;
+            padding: 5px;
+            overflow: auto;
+            min-width: 50px;
+            min-height: 50px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .compartment:hover {
+            border-color: #374151;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Styles for the topic objects (icons) */
+        .topic-object {
+            width: 40px;
+            height: 40px;
+            margin: 5px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            border-radius: 4px;
+            background-color: #5d8c6f; /* Slightly darker sage */
+            color: var(--beige);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            transition: transform 0.1s ease-in-out;
+        }
+
+        .topic-object:hover {
+            transform: scale(1.1);
+            background-color: #4a755a;
+        }
+
+        /* Resizer handle (bottom-right corner) */
+        .resizer {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            right: 0;
+            bottom: 0;
+            background: #374151;
+            cursor: nwse-resize;
+            border-radius: 0 0 4px 0;
+            z-index: 2;
+        }
+
+        /* Modal Styles */
+        .modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.4);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000; /* Increased Z-index for 3D overlay */
+        }
+
+        .modal-content {
+            background-color: var(--beige);
+            padding: 24px;
+            border-radius: 8px;
+            box-shadow: var(--shadow-medium);
+            width: 90%;
+            max-width: 600px;
+        }
+
+        /* Flashcard Styles */
+        .flashcard-container {
+            perspective: 1000px;
+            width: 100%;
+            height: 200px;
+        }
+
+        .flashcard {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transform-style: preserve-3d;
+            transition: transform 0.6s;
+            cursor: pointer;
+        }
+
+        .flashcard.flipped {
+            transform: rotateY(180deg);
+        }
+
+        .flashcard-face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 15px;
+            border-radius: 6px;
+            background-color: var(--sage-green);
+            box-shadow: var(--shadow-light);
+            text-align: center;
+            border: 2px solid #5d8c6f;
+        }
+
+        .flashcard-back {
+            transform: rotateY(180deg);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="app" class="flex flex-col items-center p-4 w-full">
+        <h1 class="text-3xl md:text-4xl font-serif text-gray-700 mb-6 font-bold">VidyutSetu Memory Room</h1>
+
+        <!-- Main Content Area -->
+        <div id="main-content" class="w-full flex flex-col items-center">
+            
+            <!-- Welcome Screen -->
+            <div id="welcome-screen" class="p-8 bg-white rounded-lg shadow-xl text-center max-w-md">
+                <h2 class="text-4xl font-serif text-gray-800 mb-4 font-semibold">Welcome to your Memory Room</h2>
+                <p class="text-lg text-gray-600 mb-8">Let’s organize your concepts visually.</p>
+                <button id="enter-room" class="px-6 py-3 bg-sage-green hover:bg-gray-400 text-gray-800 font-medium rounded-md shadow-md transition duration-200">
+                    Enter Room
+                </button>
+            </div>
+
+            <!-- 2D Room Container -->
+            <div id="room-container" class="rounded-lg"></div>
+            
+            <!-- 3D View Container -->
+            <div id="three-d-view" class="rounded-lg"></div>
+        </div>
+
+        <!-- Global Modal for Interactions -->
+        <div id="global-modal" class="modal-backdrop">
+            <div id="modal-content" class="modal-content">
+                <!-- Modal content (topic selection, flashcards, notes, audio) will be injected here -->
+            </div>
+        </div>
+
+        <!-- Utility Buttons -->
+        <div id="utility-buttons" class="mt-4 flex space-x-4">
+            <!-- Buttons injected here -->
+        </div>
+    </div>
+
+    <script>
+        // --- Configuration and State ---
+        const STORAGE_KEY = 'vidyutsetu_memory_room_data';
+        let state = {
+            compartments: {}, // Keyed by ID: { id, x, y, width, height, topics: { id: { type, content: { title, notes/cards/audioData/mindmap } } } }
+            roomMode: 'organize', // 'organize' or 'walk' (3D)
+        };
+
+        let dragging = {
+            element: null,
+            startX: 0,
+            startY: 0,
+            initialX: 0,
+            initialY: 0,
+            isResizing: false,
+            initialWidth: 0,
+            initialHeight: 0
+        };
+
+        let roomContainer;
+        let threeDView;
+        let welcomeScreen; 
+        let mainContent;
+        let utilityButtons;
+        let globalModal;
+        let modalContent;
+        let currentCompId = null;
+        let currentTopicId = null;
+        let lastClickCoords = { x: 0, y: 0 }; // Store the 3D click position
+
+        // --- Three.js Variables and Camera Controls ---
+        let scene, camera, renderer, roomSize;
+        const ROOM_DEPTH = 300; // Fixed depth for the 3D room visualization
+        
+        // Raycasting for 3D interaction
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        // Panning Variables
+        let isDragging = false;
+        let isClick = true; // Flag to differentiate click from pan
+        let previousMousePosition = null; // CRITICAL FIX: Initialize as null for safety
+        const panSpeed = 0.005; // Speed for camera rotation/panning
+
+        // Movement Variables for Walk View (W, A, S, D)
+        let moveForward = false;
+        let moveBackward = false;
+        let moveLeft = false;
+        let moveRight = false;
+        const movementSpeed = 5; // How fast the camera moves
+
+        // --- Utility Functions ---
+
+        /**
+         * Safely loads data from localStorage or returns initial empty state.
+         */
+        function loadData() {
+            try {
+                const storedData = localStorage.getItem(STORAGE_KEY);
+                if (storedData) {
+                    state = JSON.parse(storedData);
+                }
+                if (!state.compartments) {
+                    state.compartments = {};
+                }
+                if (!state.roomMode) {
+                    state.roomMode = 'organize';
+                }
+                // Ensure new content type (mindmap) exists on load
+                Object.values(state.compartments).forEach(comp => {
+                    Object.values(comp.topics).forEach(topic => {
+                        if (typeof topic.content.mindmap === 'undefined') {
+                            topic.content.mindmap = '';
+                        }
+                    });
+                });
+            } catch (error) {
+                console.error("Error loading data from localStorage:", error);
+            }
+        }
+
+        /**
+         * Saves the current state to localStorage.
+         */
+        function saveData() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+                console.log("Room data saved.");
+            } catch (error) {
+                console.error("Error saving data to localStorage:", error);
+            }
+        }
+
+        /**
+         * Closes the global modal.
+         */
+        function closeModal() {
+            globalModal.style.display = 'none';
+            modalContent.innerHTML = '';
+            currentCompId = null;
+            currentTopicId = null;
+            // Re-render 3D view to reflect new object if in 3D mode
+            if (state.roomMode === 'walk') {
+                render3DView();
+            }
+        }
+
+        /**
+         * Generates a unique ID.
+         * @returns {string}
+         */
+        function generateId() {
+            return 'id-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+        }
+        
+        // --- Keyboard Controls for Walk View ---
+
+        function onKeyDown(event) {
+            if (state.roomMode !== 'walk') return;
+            switch (event.code) {
+                case 'KeyW':
+                case 'ArrowUp':
+                    moveForward = true;
+                    break;
+                case 'KeyS':
+                case 'ArrowDown':
+                    moveBackward = true;
+                    break;
+                case 'KeyA':
+                case 'ArrowLeft':
+                    moveLeft = true;
+                    break;
+                case 'KeyD':
+                case 'ArrowRight':
+                    moveRight = true;
+                    break;
+            }
+        }
+
+        function onKeyUp(event) {
+            if (state.roomMode !== 'walk') return;
+            switch (event.code) {
+                case 'KeyW':
+                case 'ArrowUp':
+                    moveForward = false;
+                    break;
+                case 'KeyS':
+                case 'ArrowDown':
+                    moveBackward = false;
+                    break;
+                case 'KeyA':
+                case 'ArrowLeft':
+                    moveLeft = false;
+                    break;
+                case 'KeyD':
+                case 'ArrowRight':
+                    moveRight = false;
+                    break;
+            }
+        }
+
+
+        // --- Render Functions ---
+
+        /**
+         * Renders the initial welcome screen.
+         */
+        function renderWelcome() {
+            welcomeScreen.style.display = 'block';
+            roomContainer.style.display = 'none';
+            threeDView.style.display = 'none';
+            utilityButtons.innerHTML = '';
+        }
+
+        /**
+         * Renders the main 2D room view or 3D view based on state.
+         */
+        function renderRoom() {
+            // Remove previous listeners to prevent duplicates
+            roomContainer.removeEventListener('click', handleRoomClick);
+            
+            // Clean up 3D listeners if they exist
+            if (renderer && renderer.domElement) {
+                renderer.domElement.removeEventListener('click', on3DMouseClick);
+                renderer.domElement.removeEventListener('mousedown', on3DMouseDown);
+                renderer.domElement.removeEventListener('mousemove', on3DMouseMove);
+                renderer.domElement.removeEventListener('mouseup', on3DMouseUp);
+            }
+
+            roomContainer.innerHTML = '';
+            threeDView.innerHTML = '';
+
+            // 1. Hide Welcome, Show Utility Buttons
+            welcomeScreen.style.display = 'none';
+            renderUtilityButtons(); 
+
+            // 2. Determine View Mode
+            if (state.roomMode === 'organize') {
+                roomContainer.style.display = 'block';
+                threeDView.style.display = 'none';
+                // Get fresh size info when 2D view is visible
+                const bounds = roomContainer.getBoundingClientRect();
+                roomSize = { width: bounds.width || 1000, height: bounds.height || 500 }; 
+                render2DView();
+            } else {
+                roomContainer.style.display = 'none';
+                threeDView.style.display = 'block';
+                // Get fresh size info when 3D view is visible
+                const bounds = roomContainer.getBoundingClientRect();
+                roomSize = { width: bounds.width || 1000, height: bounds.height || 500 }; 
+                render3DView();
+            }
+        }
+
+        /**
+         * Renders the 2D Organization view.
+         */
+        function render2DView() {
+            // Get fresh size information for compartment clamping/resizing
+            const bounds = roomContainer.getBoundingClientRect();
+            roomSize = { width: bounds.width || 1000, height: bounds.height || 500 }; 
+            
+            roomContainer.classList.remove('walk-view');
+            roomContainer.addEventListener('click', handleRoomClick);
+
+            // Render all stored compartments
+            Object.values(state.compartments).forEach(compartmentData => {
+                const compEl = createCompartmentElement(compartmentData);
+                roomContainer.appendChild(compEl);
+            });
+        }
+        
+        /**
+         * Handles mouse down for 3D panning.
+         */
+        function on3DMouseDown(event) {
+            isDragging = true;
+            isClick = true; // Assume it's a click until mouse moves
+            // CRITICAL FIX: Initialize previousMousePosition here
+            previousMousePosition = { x: event.clientX, y: event.clientY };
+        }
+
+        /**
+         * Handles mouse move for 3D panning.
+         */
+        function on3DMouseMove(event) {
+            // CRITICAL FIX: Check if previousMousePosition is initialized
+            if (!isDragging || !previousMousePosition) return;
+            
+            
+            // Check for significant movement to disable the click flag
+            const movementThreshold = 5;
+            if (Math.abs(event.clientX - previousMousePosition.x) > movementThreshold ||
+                Math.abs(event.clientY - previousMousePosition.y) > movementThreshold) {
+                isClick = false; 
+            }
+
+            const deltaX = event.clientX - previousMousePosition.x;
+            const deltaY = event.clientY - previousMousePosition.y;
+            
+            // Pan left/right (Yaw/Y-axis rotation)
+            const rotationY = deltaX * panSpeed;
+            
+            // Pan up/down (Pitch/X-axis rotation) - Clamping to prevent camera flipping
+            const rotationX = deltaY * panSpeed; 
+
+            const target = new THREE.Vector3();
+            camera.getWorldDirection(target); // Get current look vector
+            
+            // Apply yaw (rotation around world Y axis)
+            const horizontalAxis = new THREE.Vector3(0, 1, 0);
+            target.applyAxisAngle(horizontalAxis, -rotationY); // Negative sign for intuitive drag
+
+            // Apply pitch (rotation around camera's local X axis)
+            const verticalAxis = new THREE.Vector3();
+            verticalAxis.crossVectors(target, horizontalAxis).normalize();
+            target.applyAxisAngle(verticalAxis, rotationX); // Positive sign for intuitive drag
+
+            // Update camera lookAt target to the new target vector
+            const newTarget = new THREE.Vector3();
+            newTarget.copy(camera.position).add(target.multiplyScalar(100)); // 100 is just distance
+            
+            // Ensure camera doesn't look too far up or down (optional clamp)
+            // Clamp the vertical component (Y-axis) of the target to prevent full flip
+            const MAX_PITCH_Y = roomSize.height * 0.9;
+            const MIN_PITCH_Y = roomSize.height * 0.1;
+            newTarget.y = Math.max(MIN_PITCH_Y, Math.min(MAX_PITCH_Y, newTarget.y));
+            
+            camera.lookAt(newTarget);
+            
+            previousMousePosition = {
+                x: event.clientX,
+                y: event.clientY
+            };
+        }
+
+        /**
+         * Handles mouse up for 3D panning.
+         */
+        function on3DMouseUp() {
+            isDragging = false;
+        }
+
+
+        /**
+         * Handles click interaction in 3D (to open topic or add new topic).
+         */
+        function on3DMouseClick(event) {
+            event.preventDefault();
+
+            // Only process if it was registered as a click (not a drag/pan)
+            if (!isClick) {
+                 return; 
+            }
+            
+            const bounds = renderer.domElement.getBoundingClientRect();
+            
+            // Calculate mouse position in normalized device coordinates (-1 to +1)
+            mouse.x = ((event.clientX - bounds.left) / bounds.width) * 2 - 1;
+            mouse.y = -((event.clientY - bounds.top) / bounds.height) * 2 + 1;
+
+            // Update the picking ray with the camera and mouse position
+            raycaster.setFromCamera(mouse, camera);
+
+            // Calculate objects intersecting the picking ray
+            const intersects = raycaster.intersectObjects(scene.children);
+
+            let clickedTopic = false;
+            let clickedBackWall = false;
+
+            for (let i = 0; i < intersects.length; i++) {
+                const intersectedObject = intersects[i].object;
+                
+                if (intersectedObject.userData.isTopic) {
+                    // 1. Clicked on a Topic Object (Open Content Modal)
+                    const compId = intersectedObject.userData.compId;
+                    const topicId = intersectedObject.userData.topicId;
+
+                    const topicData = state.compartments[compId].topics[topicId];
+                    if (topicData) {
+                        currentCompId = compId;
+                        currentTopicId = topicId;
+                        renderTopicContentModal(topicData);
+                        clickedTopic = true;
+                        break; 
+                    }
+                } else if (intersectedObject.userData.isBackWall) {
+                    // 2. Clicked on the Back Wall (Add New Topic)
+                    clickedBackWall = true;
+                    // Store the 3D coordinates relative to the back wall plane (Z=0)
+                    const point = intersectedObject.point; 
+                    
+                    // Convert 3D point (X, Y) back to 2D coordinates (pixels)
+                    const x_2d = point.x;
+                    const y_2d = roomSize.height - point.y; // Invert Y
+                    
+                    lastClickCoords = { x: x_2d, y: y_2d };
+                    
+                    // Trigger the topic selection modal, which will call addTopicObjectFrom3D
+                    renderTopicSelectionModal();
+                    break;
+                }
+            }
+            // Reset click state after processing
+            isClick = true; 
+        }
+
+
+        /**
+         * Renders the complete rectangular 3D Walk View with improved lighting, design, and fixed camera.
+         */
+        function render3DView() {
+            // 1. Setup Scene, Camera, and Renderer
+            const width = threeDView.clientWidth;
+            const height = threeDView.clientHeight;
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x374151); // Darker background
+
+            camera = new THREE.PerspectiveCamera(75, width / height, 1, 2000);
+            
+            const CENTER_X = roomSize.width / 2;
+            const CENTER_Y = roomSize.height / 2;
+            
+            // CHANGE: Camera positioned inside the room for walk view (closer to the front wall)
+            const CAMERA_Z = ROOM_DEPTH - 50; 
+            
+            camera.position.set(CENTER_X, CENTER_Y * 0.8, CAMERA_Z); 
+            camera.lookAt(CENTER_X, CENTER_Y, 0); // Look at the center of the back wall
+
+
+            // Clean up previous renderer element
+            while (threeDView.firstChild) {
+                threeDView.removeChild(threeDView.firstChild);
+            }
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(width, height);
+            threeDView.appendChild(renderer.domElement);
+            
+            // Attach interaction listeners for pan and click
+            renderer.domElement.addEventListener('click', on3DMouseClick);
+            renderer.domElement.addEventListener('mousedown', on3DMouseDown);
+            renderer.domElement.addEventListener('mousemove', on3DMouseMove);
+            renderer.domElement.addEventListener('mouseup', on3DMouseUp);
+
+
+            // 2. Lighting (CRITICAL FIX: Reduced Ambient Light for color saturation)
+            scene.add(new THREE.AmbientLight(0xffffff, 0.5)); // Reduced from 3.0 to 0.5
+            
+            const light = new THREE.DirectionalLight(0xffffff, 2.5); // Slightly reduced from 3.5
+            light.position.set(CENTER_X, roomSize.height, ROOM_DEPTH / 2); 
+            scene.add(light);
+
+            // Define materials for consistency
+            const wallColor = 0xC1D5C9; // Light Sage
+            const floorColor = 0xF5F5DC; // Soft Beige
+            const shelfColor = 0x8B4513; // Saddle Brown (Wood)
+            const trimColor = 0x5D4037; // Dark Brown Trim/Baseboard
+            const rugColor = 0x4A6B6A; // Dark Sage for Rug
+            const deskColor = 0x5D4037; // Darker wood for Desk
+
+            const wallMaterial = new THREE.MeshPhongMaterial({ color: wallColor, side: THREE.DoubleSide });
+            const floorMaterial = new THREE.MeshPhongMaterial({ color: floorColor, side: THREE.DoubleSide });
+            const shelfMaterial = new THREE.MeshPhongMaterial({ color: shelfColor });
+            const decorMaterial = new THREE.MeshPhongMaterial({ color: deskColor });
+
+
+            // 3. Render the FULL Room (Floor, Walls, Ceiling)
+            
+            // Floor (Beige)
+            const floorGeometry = new THREE.PlaneGeometry(roomSize.width, ROOM_DEPTH);
+            const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.set(CENTER_X, 0, ROOM_DEPTH / 2);
+            scene.add(floor);
+            
+            // Back Wall (Light Sage) - IMPORTANT: Add userData for click detection
+            const backWallGeometry = new THREE.PlaneGeometry(roomSize.width, roomSize.height);
+            const backWall = new THREE.Mesh(backWallGeometry, wallMaterial);
+            backWall.position.set(CENTER_X, CENTER_Y, 0);
+            backWall.userData.isBackWall = true; // Flag for raycasting
+            scene.add(backWall);
+
+            // Left Wall (Light Sage)
+            const leftWallGeometry = new THREE.PlaneGeometry(ROOM_DEPTH, roomSize.height);
+            const leftWall = new THREE.Mesh(leftWallGeometry, wallMaterial);
+            leftWall.rotation.y = Math.PI / 2; 
+            leftWall.position.set(0, CENTER_Y, ROOM_DEPTH / 2);
+            scene.add(leftWall);
+
+            // Right Wall (Light Sage)
+            const rightWallGeometry = new THREE.PlaneGeometry(ROOM_DEPTH, roomSize.height);
+            const rightWall = new THREE.Mesh(rightWallGeometry, wallMaterial);
+            rightWall.rotation.y = -Math.PI / 2; 
+            rightWall.position.set(roomSize.width, CENTER_Y, ROOM_DEPTH / 2);
+            scene.add(rightWall);
+
+            // Ceiling (Light Sage)
+            const ceilingGeometry = new THREE.PlaneGeometry(roomSize.width, ROOM_DEPTH);
+            const ceiling = new THREE.Mesh(ceilingGeometry, wallMaterial);
+            ceiling.rotation.x = Math.PI / 2; 
+            ceiling.position.set(CENTER_X, roomSize.height, ROOM_DEPTH / 2);
+            scene.add(ceiling);
+
+            // Wall Trim / Baseboard 
+            const trimHeight = 15;
+            const trimGeometry = new THREE.BoxGeometry(roomSize.width, trimHeight, 5); 
+            const trimMaterial = new THREE.MeshPhongMaterial({ color: trimColor });
+            const trim = new THREE.Mesh(trimGeometry, trimMaterial);
+            trim.position.set(
+                CENTER_X,
+                trimHeight / 2, 
+                5 / 2 
+            );
+            scene.add(trim);
+
+
+            // 4. DECORATIVE ELEMENTS
+            
+            // Desk (Table Top) - Dark Wood
+            const deskWidth = 250;
+            const deskDepth = 120;
+            const deskHeight = 80;
+            const tableTopThickness = 10;
+            const tableTopGeometry = new THREE.BoxGeometry(deskWidth, tableTopThickness, deskDepth);
+            const tableTop = new THREE.Mesh(tableTopGeometry, decorMaterial);
+            tableTop.position.set(
+                roomSize.width * 0.8, // Positioned on the right side
+                deskHeight, 
+                ROOM_DEPTH * 0.4 
+            );
+            scene.add(tableTop);
+            
+            // Desk Leg 1
+            const legGeometry = new THREE.BoxGeometry(10, deskHeight, 10);
+            const leg1 = new THREE.Mesh(legGeometry, decorMaterial);
+            leg1.position.set(tableTop.position.x - deskWidth/2 + 5, deskHeight/2, tableTop.position.z - deskDepth/2 + 5);
+            scene.add(leg1);
+
+            // Desk Leg 2
+            const leg2 = new THREE.Mesh(legGeometry, decorMaterial);
+            leg2.position.set(tableTop.position.x + deskWidth/2 - 5, deskHeight/2, tableTop.position.z - deskDepth/2 + 5);
+            scene.add(leg2);
+            
+            // Accent Rug - Dark Sage
+            const rugWidth = 300;
+            const rugDepth = 150;
+            const rugGeometry = new THREE.PlaneGeometry(rugWidth, rugDepth);
+            const rugMaterial = new THREE.MeshPhongMaterial({ color: rugColor, side: THREE.DoubleSide });
+            const rug = new THREE.Mesh(rugGeometry, rugMaterial);
+            rug.rotation.x = -Math.PI / 2;
+            rug.position.set(
+                roomSize.width * 0.25, // Positioned on the left side
+                1, // Hovering slightly above the floor
+                ROOM_DEPTH * 0.5 
+            );
+            scene.add(rug);
+            
+            // Digital Clock (Simple Cube on Back Wall)
+            const clockSize = 30;
+            const clockGeometry = new THREE.BoxGeometry(clockSize, clockSize * 0.7, 5);
+            const clockMaterial = new THREE.MeshPhongMaterial({ color: 0x4B0082 }); // Indigo/Deep Purple
+            const clock = new THREE.Mesh(clockGeometry, clockMaterial);
+            clock.position.set(
+                roomSize.width * 0.2, // Left side of the back wall
+                roomSize.height * 0.7, // High up
+                2.5 // Flush with back wall
+            );
+            scene.add(clock);
+
+
+            // 5. Render Compartments as Solid Shelves and Topic Objects
+
+            const shelfThickness = 10;
+            const shelfDepth = 50;
+            const maxTopicsPerRow = 15;
+            const topicSpacing = 50; 
+            const startXOffset = 30;
+
+            Object.values(state.compartments).forEach(comp => {
+                
+                // CRITICAL FIX: Invert Y-axis coordinates for 3D placement. 
+                const y_3d_bottom_of_shelf = roomSize.height - (comp.y + comp.height); 
+
+                // COMPARTMENT MESH (Wood Shelf)
+                const compGeometry = new THREE.BoxGeometry(comp.width, shelfThickness, shelfDepth); 
+                const compMesh = new THREE.Mesh(compGeometry, shelfMaterial);
+                
+                compMesh.position.set(
+                    comp.x + comp.width / 2,
+                    y_3d_bottom_of_shelf + shelfThickness / 2,
+                    shelfDepth / 2 // Projects out from the wall
+                );
+                scene.add(compMesh);
+
+
+                // Render Topic Objects (small cubes/spheres) on the compartment
+                Object.values(comp.topics).forEach((topic, index) => {
+                    const objectDepth = 20; // Slightly larger
+                    const objectSize = 30; // Slightly larger
+                    let topicGeometry, topicMaterial;
+
+                    // Deep, dark color coding by type for visibility
+                    switch (topic.type) {
+                        case 'BOOK':
+                            // Deep Teal/Forest Green
+                            topicGeometry = new THREE.BoxGeometry(objectSize, objectSize * 1.2, objectDepth);
+                            topicMaterial = new THREE.MeshPhongMaterial({ color: 0x3C5D55 }); 
+                            break;
+                        case 'DRAWER':
+                            // Rich Navy Blue
+                            topicGeometry = new THREE.CylinderGeometry(objectSize / 2, objectSize / 2, objectDepth, 16);
+                            topicMaterial = new THREE.MeshPhongMaterial({ color: 0x192A56 }); 
+                            break;
+                        case 'BOX':
+                            // Deep Maroon/Burgundy
+                            topicGeometry = new THREE.BoxGeometry(objectSize, objectSize, objectDepth);
+                            topicMaterial = new THREE.MeshPhongMaterial({ color: 0x800020 }); 
+                            break;
+                    }
+
+                    const topicMesh = new THREE.Mesh(topicGeometry, topicMaterial);
+                    const objectHeight = topicGeometry.parameters.height || objectSize;
+
+
+                    // FIX: Object's Y position to place it ON TOP of the shelf
+                    topicMesh.position.set(
+                        // X position: Calculates where the object sits along the shelf width
+                        comp.x + startXOffset + (index % maxTopicsPerRow) * topicSpacing, 
+                        // Y position: Base of shelf + full shelf thickness + half object height
+                        y_3d_bottom_of_shelf + shelfThickness + objectHeight / 2,
+                        // Z position: Pushes the object out slightly further than the shelf for separation
+                        shelfDepth + 10 
+                    );
+
+                    // Store necessary data for click interaction
+                    topicMesh.userData = {
+                        isTopic: true,
+                        topicId: topic.id,
+                        compId: comp.id
+                    };
+                    
+                    scene.add(topicMesh);
+                });
+            });
+
+            // 5. Animate Loop
+            const animate = () => {
+                requestAnimationFrame(animate);
+
+                // --- FPS Movement Logic ---
+                if (state.roomMode === 'walk') {
+                    const speed = movementSpeed;
+                    const forwardVector = new THREE.Vector3();
+                    camera.getWorldDirection(forwardVector);
+                    forwardVector.y = 0; // Lock movement to the horizontal plane
+                    forwardVector.normalize();
+
+                    // Calculate the vector pointing right (perpendicular to forward)
+                    const rightVector = new THREE.Vector3();
+                    rightVector.crossVectors(forwardVector, new THREE.Vector3(0, 1, 0)).normalize();
+
+                    // Apply movement based on pressed keys
+                    if (moveForward) camera.position.addScaledVector(forwardVector, speed);
+                    if (moveBackward) camera.position.addScaledVector(forwardVector, -speed);
+                    if (moveRight) camera.position.addScaledVector(rightVector, speed);
+                    if (moveLeft) camera.position.addScaledVector(rightVector, -speed);
+
+                    // Add simple boundary checks to keep the camera inside the room
+                    const margin = 20; 
+                    const minX = margin; 
+                    const maxX = roomSize.width - margin;
+                    const minZ = margin; // Prevents going through back wall (Z=0)
+                    const maxZ = ROOM_DEPTH - margin; // Prevents going through front/camera wall
+
+                    camera.position.x = Math.max(minX, Math.min(maxX, camera.position.x));
+                    camera.position.z = Math.max(minZ, Math.min(maxZ, camera.position.z));
+                    
+                    // Keep camera Y (height) constant, slightly above the floor
+                    camera.position.y = CENTER_Y * 0.8; 
+                }
+                // --- End FPS Movement Logic ---
+
+                renderer.render(scene, camera);
+            };
+
+            // Start the animation loop
+            animate();
+        }
+
+
+        /**
+         * Renders the main action buttons.
+         */
+        function renderUtilityButtons() {
+            const modeText = state.roomMode === 'organize' ? 'Switch to Room Walk View (3D)' : 'Switch to Organize View (2D)';
+            utilityButtons.innerHTML = `
+                <button id="switch-mode-btn" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white font-medium rounded-md shadow-md transition duration-200">
+                    ${modeText}
+                </button>
+                <button id="reset-btn" class="px-4 py-2 bg-red-400 hover:bg-red-500 text-white font-medium rounded-md shadow-md transition duration-200">
+                    Reset Room
+                </button>
+            `;
+            document.getElementById('switch-mode-btn').addEventListener('click', toggleRoomMode);
+            document.getElementById('reset-btn').addEventListener('click', resetRoom);
+        }
+
+        /**
+         * Toggles between organize (2D) and walk (3D) view modes.
+         */
+        function toggleRoomMode() {
+            state.roomMode = state.roomMode === 'organize' ? 'walk' : 'organize';
+            saveData();
+            // Re-render the room to switch between 2D and 3D
+            renderRoom();
+        }
+
+        /**
+         * Resets all room data after confirmation.
+         */
+        function resetRoom() {
+            if (window.confirm("Are you sure you want to reset your Memory Room? All data will be lost.")) {
+                state.compartments = {};
+                saveData();
+                renderRoom();
+            }
+        }
+
+        /**
+         * Creates and returns a compartment DOM element (2D view).
+         */
+        function createCompartmentElement(data) {
+            const compEl = document.createElement('div');
+            compEl.id = `comp-${data.id}`;
+            compEl.className = 'compartment rounded-md';
+            compEl.style.left = `${data.x}px`;
+            compEl.style.top = `${data.y}px`;
+            compEl.style.width = `${data.width}px`;
+            compEl.style.height = `${data.height}px`;
+
+            compEl.dataset.id = data.id;
+
+            if (state.roomMode === 'organize') {
+                // Add Resizer handle
+                const resizer = document.createElement('div');
+                resizer.className = 'resizer';
+                compEl.appendChild(resizer);
+                resizer.addEventListener('mousedown', (e) => startDrag(e, true));
+
+                // Add Drag handler
+                compEl.addEventListener('mousedown', startDrag);
+                compEl.addEventListener('touchstart', startDragTouch);
+
+                // Click to add topic object
+                compEl.addEventListener('click', (e) => {
+                    if (e.target === compEl) {
+                        currentCompId = data.id;
+                        // Use existing 2D coordinates for placement
+                        lastClickCoords = { x: data.x + data.width / 2, y: data.y + data.height / 2 };
+                        renderTopicSelectionModal();
+                    }
+                });
+
+                // Delete button
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = 'x';
+                deleteBtn.className = 'absolute top-0 right-0 p-1 text-xs text-red-700 opacity-50 hover:opacity-100 transition';
+                deleteBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    if (window.confirm("Delete this compartment and all its contents?")) {
+                        delete state.compartments[data.id];
+                        saveData();
+                        compEl.remove();
+                    }
+                };
+                compEl.appendChild(deleteBtn);
+            }
+
+            // Render topic objects inside the compartment
+            Object.values(data.topics).forEach(topic => {
+                const topicEl = createTopicObjectElement(topic, data.id);
+                compEl.appendChild(topicEl);
+            });
+
+            return compEl;
+        }
+
+        /**
+         * Creates and returns a topic object DOM element (2D view).
+         */
+        function createTopicObjectElement(topicData, compId) {
+            const topicEl = document.createElement('div');
+            topicEl.dataset.compId = compId;
+            topicEl.dataset.topicId = topicData.id;
+            topicEl.className = 'topic-object';
+            topicEl.title = topicData.content.title || `Topic (${topicData.type})`;
+
+            let icon = '';
+            switch (topicData.type) {
+                case 'BOOK':
+                    icon = '📖';
+                    break;
+                case 'DRAWER':
+                    icon = '🗄️';
+                    break;
+                case 'BOX':
+                    icon = '📦';
+                    break;
+            }
+            topicEl.textContent = icon;
+
+            topicEl.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent the compartment click handler
+                currentCompId = compId;
+                currentTopicId = topicData.id;
+                renderTopicContentModal(topicData);
+            });
+            return topicEl;
+        }
+
+        /**
+         * Handles click on the room to create a new compartment.
+         */
+        function handleRoomClick(e) {
+            if (e.target !== roomContainer) return;
+
+            // Get click coordinates relative to the room container
+            const bounds = roomContainer.getBoundingClientRect();
+            const clickX = e.clientX - bounds.left;
+            const clickY = e.clientY - bounds.top;
+
+            const newId = generateId();
+            const defaultSize = 100;
+
+            const newComp = {
+                id: newId,
+                x: clickX - defaultSize / 2, // Center the box on click
+                y: clickY - defaultSize / 2,
+                width: defaultSize,
+                height: defaultSize,
+                topics: {}
+            };
+
+            // Clamp positions to room boundaries
+            newComp.x = Math.max(0, Math.min(newComp.x, bounds.width - defaultSize));
+            newComp.y = Math.max(0, Math.min(newComp.y, bounds.height - defaultSize));
+
+            state.compartments[newId] = newComp;
+            saveData();
+            renderRoom(); // Re-render to add event listeners
+        }
+
+        // --- Drag & Resize Logic (Unchanged) ---
+        function startDrag(e, isResizing = false) {
+            if (state.roomMode === 'walk') return;
+            e.preventDefault();
+            e.stopPropagation();
+            let target = isResizing ? e.target.closest('.compartment') : e.target;
+            if (!target.classList.contains('compartment')) return;
+            dragging.element = target;
+            dragging.startX = e.clientX;
+            dragging.startY = e.clientY;
+            dragging.isResizing = isResizing;
+            const compData = state.compartments[target.dataset.id];
+            dragging.initialX = compData.x;
+            dragging.initialY = compData.y;
+            dragging.initialWidth = compData.width;
+            dragging.initialHeight = compData.height;
+            target.style.cursor = isResizing ? 'nwse-resize' : 'grabbing';
+            window.addEventListener('mousemove', doDrag);
+            window.addEventListener('mouseup', stopDrag);
+        }
+
+        function startDragTouch(e) {
+            if (state.roomMode === 'walk') return;
+            if (e.touches.length !== 1) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const target = e.target.closest('.compartment');
+            if (!target) return;
+            dragging.element = target;
+            dragging.startX = e.touches[0].clientX;
+            dragging.startY = e.touches[0].clientY;
+            dragging.isResizing = e.target.classList.contains('resizer');
+            const compData = state.compartments[target.dataset.id];
+            dragging.initialX = compData.x;
+            dragging.initialY = compData.y;
+            dragging.initialWidth = compData.width;
+            dragging.initialHeight = compData.height;
+            window.addEventListener('touchmove', doDragTouch);
+            window.addEventListener('touchend', stopDragTouch);
+        }
+
+        function doDrag(e) {
+            if (!dragging.element) return;
+            const bounds = roomContainer.getBoundingClientRect();
+            const compId = dragging.element.dataset.id;
+            const compData = state.compartments[compId];
+            const deltaX = e.clientX - dragging.startX;
+            const deltaY = e.clientY - dragging.startY;
+
+            if (dragging.isResizing) {
+                let newWidth = dragging.initialWidth + deltaX;
+                let newHeight = dragging.initialHeight + deltaY;
+                newWidth = Math.max(50, Math.min(newWidth, bounds.width - compData.x));
+                newHeight = Math.max(50, Math.min(newHeight, bounds.height - compData.y));
+                compData.width = newWidth;
+                compData.height = newHeight;
+                dragging.element.style.width = `${newWidth}px`;
+                dragging.element.style.height = `${newHeight}px`;
+            } else {
+                let newX = dragging.initialX + deltaX;
+                let newY = dragging.initialY + deltaY;
+                newX = Math.max(0, Math.min(newX, bounds.width - compData.width));
+                newY = Math.max(0, Math.min(newY, bounds.height - compData.height));
+                compData.x = newX;
+                compData.y = newY;
+                dragging.element.style.left = `${newX}px`;
+                dragging.element.style.top = `${newY}px`;
+            }
+        }
+
+        function doDragTouch(e) {
+            if (!dragging.element || e.touches.length !== 1) return;
+            doDrag({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY });
+        }
+
+        function stopDrag() {
+            if (!dragging.element) return;
+            dragging.element.style.cursor = 'grab';
+            const resizer = dragging.element.querySelector('.resizer');
+            if(resizer) resizer.style.cursor = 'nwse-resize';
+            saveData();
+            dragging.element = null;
+            window.removeEventListener('mousemove', doDrag);
+            window.removeEventListener('mouseup', stopDrag);
+        }
+
+        function stopDragTouch() {
+            if (!dragging.element) return;
+            saveData();
+            dragging.element = null;
+            window.removeEventListener('touchmove', doDragTouch);
+            window.removeEventListener('touchend', stopDragTouch);
+        }
+
+        // --- Modal & Content Logic ---
+
+        /**
+         * Renders the modal for selecting a topic type (BOOK, DRAWER, BOX).
+         */
+        function renderTopicSelectionModal() {
+            modalContent.innerHTML = `
+                <h3 class="text-xl font-medium mb-4">Add Topic Object</h3>
+                <p class="text-gray-600 mb-6">Select a visual container for your concept.</p>
+                <div class="flex justify-around space-x-4">
+                    ${createTopicButton('BOOK', '📖 Book: Detailed Study', 'BOOK')}
+                    ${createTopicButton('DRAWER', '🗄️ Drawer: Practice Questions', 'DRAWER')}
+                    ${createTopicButton('BOX', '📦 Box: Core Concepts', 'BOX')}
+                </div>
+                <button onclick="closeModal()" class="mt-8 px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">Close</button>
+            `;
+            globalModal.style.display = 'flex';
+        }
+
+        function createTopicButton(type, label, iconType) {
+            return `
+                <button onclick="addTopicObject('${iconType}')" class="flex flex-col items-center p-4 bg-sage-green rounded-md shadow hover:shadow-lg transition">
+                    <span class="text-4xl mb-2">${type === 'BOOK' ? '📖' : type === 'DRAWER' ? '🗄️' : '📦'}</span>
+                    <span class="text-sm font-medium">${label}</span>
+                </button>
+            `;
+        }
+        
+        /**
+         * Finds the closest compartment to the 2D coordinates (x, y) or creates a new one.
+         * Used for 3D placement logic.
+         */
+        function findOrCreateCompartment(x, y) {
+            let closestCompId = null;
+            let minDistanceSq = Infinity;
+            
+            // Check if coordinates fall within any existing compartment bounds
+            for (const id in state.compartments) {
+                const comp = state.compartments[id];
+                if (x >= comp.x && x <= comp.x + comp.width &&
+                    y >= comp.y && y <= comp.y + comp.height) {
+                    return comp.id; // Found a containing compartment
+                }
+            }
+            
+            // If no containing compartment found, find the closest one to place the object near
+            for (const id in state.compartments) {
+                const comp = state.compartments[id];
+                const compCenterX = comp.x + comp.width / 2;
+                const compCenterY = comp.y + comp.height / 2;
+                const distSq = (compCenterX - x) ** 2 + (compCenterY - y) ** 2;
+                
+                if (distSq < minDistanceSq) {
+                    minDistanceSq = distSq;
+                    closestCompId = id;
+                }
+            }
+            
+            // If no compartment exists, create a new one centered on the click point
+            if (!closestCompId) {
+                const newId = generateId();
+                const defaultSize = 100;
+
+                const newComp = {
+                    id: newId,
+                    x: x - defaultSize / 2, // Center the box on click
+                    y: y - defaultSize / 2,
+                    width: defaultSize,
+                    height: defaultSize,
+                    topics: {}
+                };
+                
+                // Clamp positions to room boundaries
+                newComp.x = Math.max(0, Math.min(newComp.x, roomSize.width - defaultSize));
+                newComp.y = Math.max(0, Math.min(newComp.y, roomSize.height - defaultSize));
+
+                state.compartments[newId] = newComp;
+                return newId;
+            }
+            
+            return closestCompId;
+        }
+
+
+        /**
+         * Adds a new topic object to the current compartment (triggered by 2D or 3D click).
+         */
+        function addTopicObject(type) {
+            // lastClickCoords holds the 2D position regardless of 2D or 3D origin
+            if (!lastClickCoords) return; 
+
+            // Find or create the compartment based on the click coordinates
+            const compId = findOrCreateCompartment(lastClickCoords.x, lastClickCoords.y);
+
+            const topicId = generateId();
+            const newTopic = {
+                id: topicId,
+                type: type,
+                content: {
+                    title: `${type} Topic`,
+                    flashcards: [],
+                    notes: '',
+                    mindmap: '', 
+                    chantAudio: ''
+                }
+            };
+
+            state.compartments[compId].topics[topicId] = newTopic;
+            saveData();
+            closeModal();
+            // Re-render the room to show the new object in both views
+            renderRoom(); 
+        }
+
+        /**
+         * Renders the content modal (Flashcards, Notes, Mindmap, Audio).
+         */
+        function renderTopicContentModal(topic) {
+            const topicType = topic.type;
+            const content = topic.content;
+
+            modalContent.innerHTML = `
+                <h3 class="text-2xl font-medium font-serif mb-4">${topicType} Content: ${content.title}</h3>
+
+                <input type="text" id="topic-title-input" class="w-full p-2 mb-4 border border-gray-300 rounded" value="${content.title}" placeholder="Topic Title">
+
+                <div class="flex border-b border-gray-300 mb-4">
+                    <button id="tab-flashcards" class="p-3 font-medium text-gray-700 border-b-2 border-transparent transition duration-150 hover:border-gray-500">Flashcards</button>
+                    <button id="tab-notes" class="p-3 font-medium text-gray-700 border-b-2 border-transparent transition duration-150 hover:border-gray-500">Text Notes</button>
+                    <button id="tab-mindmap" class="p-3 font-medium text-gray-700 border-b-2 border-transparent transition duration-150 hover:border-gray-500">Mindmap</button>
+                    <button id="tab-audio" class="p-3 font-medium text-gray-700 border-b-2 border-transparent transition duration-150 hover:border-gray-500">Chant Audio</button>
+                </div>
+
+                <div id="tab-content" class="min-h-[250px] p-2"></div>
+
+                <div class="mt-6 flex justify-end space-x-4">
+                    <button id="save-content-btn" class="px-4 py-2 bg-sage-green text-gray-800 rounded hover:bg-gray-400 font-medium">Save & Close</button>
+                    <button onclick="closeModal()" class="px-4 py-2 bg-gray-300 text-gray-800 rounded hover:bg-gray-400">Cancel</button>
+                </div>
+            `;
+            globalModal.style.display = 'flex';
+
+            const tabFlashcards = document.getElementById('tab-flashcards');
+            const tabNotes = document.getElementById('tab-notes');
+            const tabMindmap = document.getElementById('tab-mindmap'); 
+            const tabAudio = document.getElementById('tab-audio');
+
+            tabFlashcards.addEventListener('click', () => switchTab('flashcards', topic));
+            tabNotes.addEventListener('click', () => switchTab('notes', topic));
+            tabMindmap.addEventListener('click', () => switchTab('mindmap', topic)); 
+            tabAudio.addEventListener('click', () => switchTab('audio', topic));
+
+            document.getElementById('save-content-btn').addEventListener('click', () => saveTopicContent(topic));
+            document.getElementById('topic-title-input').addEventListener('input', (e) => {
+                topic.content.title = e.target.value;
+                const topicEl = document.querySelector(`.topic-object[data-topic-id="${topic.id}"]`);
+                if (topicEl) topicEl.title = e.target.value;
+            });
+
+            // Default to Flashcards tab
+            switchTab('flashcards', topic);
+        }
+
+        /**
+         * Switches between content tabs in the modal.
+         */
+        function switchTab(tabName, topic) {
+            document.querySelectorAll('[id^="tab-"]').forEach(btn => btn.classList.remove('border-green-600', 'border-b-2', 'border-gray-600'));
+            document.getElementById(`tab-${tabName}`).classList.add('border-b-2', 'border-gray-600');
+
+            const tabContent = document.getElementById('tab-content');
+            tabContent.innerHTML = '';
+
+            switch (tabName) {
+                case 'flashcards':
+                    renderFlashcards(tabContent, topic);
+                    break;
+                case 'notes':
+                    renderNotes(tabContent, topic);
+                    break;
+                case 'mindmap':
+                    renderMindmap(tabContent, topic); 
+                    break;
+                case 'audio':
+                    renderAudio(tabContent, topic);
+                    break;
+            }
+        }
+
+        /**
+         * Renders the Mindmap interface (simple text editor placeholder).
+         */
+        function renderMindmap(container, topic) {
+            container.className = 'p-2';
+            container.innerHTML = `
+                <p class="text-sm text-gray-600 mb-2">Use this space to outline your Mindmap structure (e.g., in a hierarchy or list).</p>
+                <textarea id="mindmap-content" class="w-full h-[200px] p-3 border border-gray-300 rounded shadow-inner" placeholder="Central Topic: ...\n- Subtopic A\n  - Detail 1\n  - Detail 2\n- Subtopic B">${topic.content.mindmap}</textarea>
+            `;
+        }
+
+
+        // --- Other Render Functions (Unchanged) ---
+        /**
+         * Renders the Flashcards interface.
+         */
+        function renderFlashcards(container, topic) {
+            container.className = 'p-2 space-y-4';
+            const cards = topic.content.flashcards;
+
+            const cardListEl = document.createElement('div');
+            cardListEl.id = 'flashcard-list';
+            container.appendChild(cardListEl);
+
+            const renderCard = (card, index) => {
+                const cardEl = document.createElement('div');
+                cardEl.className = 'border p-3 bg-white rounded-md shadow-sm';
+                cardEl.innerHTML = `
+                    <p class="font-medium">Card ${index + 1}</p>
+                    <input type="text" class="w-full p-1 my-1 border rounded text-sm" placeholder="Front (Question)" value="${card.front}" oninput="topic.content.flashcards[${index}].front = this.value">
+                    <input type="text" class="w-full p-1 my-1 border rounded text-sm" placeholder="Back (Answer)" value="${card.back}" oninput="topic.content.flashcards[${index}].back = this.value">
+                    <button class="text-xs text-red-500 hover:text-red-700" onclick="deleteFlashcard('${topic.id}', ${index})">Delete</button>
+                    <div class="flashcard-container mt-2">
+                        <div class="flashcard" onclick="this.classList.toggle('flipped')">
+                            <div class="flashcard-face">${card.front || 'FRONT'}</div>
+                            <div class="flashcard-face flashcard-back">${card.back || 'BACK'}</div>
+                        </div>
+                    </div>
+                `;
+                cardListEl.appendChild(cardEl);
+            };
+
+            cardListEl.innerHTML = '';
+            cards.forEach(renderCard);
+
+            const addBtn = document.createElement('button');
+            addBtn.textContent = '+ Add New Card';
+            addBtn.className = 'px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 text-sm mt-2';
+            addBtn.onclick = () => {
+                topic.content.flashcards.push({ front: '', back: '' });
+                renderFlashcards(container, topic); 
+            };
+            container.appendChild(addBtn);
+        }
+
+        /**
+         * Global function to delete a flashcard (accessible from onclick).
+         */
+        window.deleteFlashcard = function(topicId, index) {
+            const topic = state.compartments[currentCompId].topics[topicId];
+            if (topic) {
+                topic.content.flashcards.splice(index, 1);
+                const container = document.getElementById('tab-content');
+                renderFlashcards(container, topic);
+            }
+        };
+
+        /**
+         * Renders the Text Notes interface.
+         */
+        function renderNotes(container, topic) {
+            container.className = 'p-2';
+            container.innerHTML = `
+                <textarea id="notes-content" class="w-full h-[200px] p-3 border border-gray-300 rounded shadow-inner" placeholder="Start typing your notes here...">${topic.content.notes}</textarea>
+            `;
+        }
+
+        /**
+         * Renders the Chant Audio interface.
+         */
+        function renderAudio(container, topic) {
+            container.className = 'p-2 space-y-4';
+            const audioData = topic.content.chantAudio;
+
+            container.innerHTML = `
+                <p class="text-gray-600">Upload or Record a simple chant/mnemonic audio.</p>
+                <div class="p-4 border border-gray-300 rounded bg-white space-y-3">
+                    <label class="block text-sm font-medium mb-1">Upload MP3/WAV</label>
+                    <input type="file" id="audio-upload" accept="audio/mp3,audio/wav" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200"/>
+
+                    <div class="mt-4 pt-4 border-t border-gray-200">
+                        <p class="text-xs text-gray-500 mb-2">Microphone Recording: (Not supported in this version. Use file upload)</p>
+                        <button class="px-4 py-2 bg-red-400 text-white rounded opacity-50 cursor-not-allowed" disabled>
+                            Start Recording
+                        </button>
+                    </div>
+                </div>
+
+                ${audioData ? `
+                    <div class="mt-4 p-3 bg-sage-green rounded">
+                        <p class="font-medium mb-2">Current Chant:</p>
+                        <audio controls src="${audioData}" class="w-full"></audio>
+                    </div>
+                ` : '<p class="text-sm text-gray-500">No audio currently stored.</p>'}
+            `;
+
+            document.getElementById('audio-upload').addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        topic.content.chantAudio = event.target.result;
+                        renderAudio(document.getElementById('tab-content'), topic);
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+        }
+
+        /**
+         * Saves the content from the modal back into the state and local storage.
+         */
+        function saveTopicContent(topic) {
+            const notesTextarea = document.getElementById('notes-content');
+            const mindmapTextarea = document.getElementById('mindmap-content');
+
+            if (notesTextarea) {
+                topic.content.notes = notesTextarea.value;
+            }
+            if (mindmapTextarea) {
+                topic.content.mindmap = mindmapTextarea.value; // Save Mindmap content
+            }
+
+            saveData();
+            closeModal();
+            renderRoom(); 
+        }
+
+        // --- Initialization ---
+
+        window.onload = function () {
+            mainContent = document.getElementById('main-content');
+            utilityButtons = document.getElementById('utility-buttons');
+            globalModal = document.getElementById('global-modal');
+            modalContent = document.getElementById('modal-content');
+            roomContainer = document.getElementById('room-container');
+            threeDView = document.getElementById('three-d-view');
+            welcomeScreen = document.getElementById('welcome-screen'); 
+            
+            // CRITICAL FIX: Attach listener to the enter button after it's defined
+            document.getElementById('enter-room').addEventListener('click', () => {
+                // Set initial click coordinates to the center of the room for the first object placement
+                const bounds = roomContainer.getBoundingClientRect();
+                roomSize = { width: bounds.width || 1000, height: bounds.height || 500 }; 
+                lastClickCoords = { x: roomSize.width / 2, y: roomSize.height / 2 }; 
+                renderRoom();
+            });
+
+            // Load data first
+            loadData();
+            
+            // Add keyboard listeners globally for walk mode
+            window.addEventListener('keydown', onKeyDown);
+            window.addEventListener('keyup', onKeyUp);
+
+            // Initial view state check
+            if (Object.keys(state.compartments).length > 0) {
+                renderRoom();
+            } else {
+                renderWelcome();
+            }
+
+            // Global event listeners for drag/touch end
+            window.addEventListener('mouseup', stopDrag);
+            window.addEventListener('touchend', stopDragTouch);
+        }
+    </script>
+</body>
+</html>
 
